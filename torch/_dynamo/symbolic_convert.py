@@ -751,6 +751,7 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
             name = name.replace(".", "implicit")
         assert name not in self.cell_and_freevars()
         if name not in self.symbolic_locals:
+            print(name)
             unimplemented("undefined LOAD_FAST")
         self.push(self.symbolic_locals[name])
         if name.startswith("___stack"):
@@ -1956,6 +1957,9 @@ class InstructionTranslator(InstructionTranslatorBase):
             f_code=f_code,
             export=export,
         )
+        self.compiler_fn = compiler_fn
+        self.export_constraints = export_constraints
+        self.frame_state = frame_state
 
         # as soon as we create the tracing context we should keep it active, so any calls
         # into dynamo apis can rely on finding it
@@ -1971,6 +1975,8 @@ class InstructionTranslator(InstructionTranslatorBase):
             vars = list(code_options["co_varnames"])
             vars.extend(x for x in self.cell_and_freevars() if x not in vars)
 
+            print("ZZ0")
+            print(f_locals)
             self.symbolic_locals = collections.OrderedDict(
                 (
                     k,
@@ -1979,6 +1985,7 @@ class InstructionTranslator(InstructionTranslatorBase):
                 for k in vars
                 if k in f_locals
             )
+            print("ZZ3")
 
             # symbolic_locals contains the mapping from original f_locals to the
             # Variable objects. During the Variable building phase, each object also

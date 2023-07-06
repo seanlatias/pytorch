@@ -1248,7 +1248,7 @@ def get_fake_value(node, tx):
         # If the first argument is nn.Module, should copy to fake mode.
         args = (deepcopy_to_fake_tensor(args[0], tx.fake_mode),) + tuple(args[1:])
 
-    if op == "call_module":
+    if op == "call_module" or op == "call_graph":
         nnmodule = tx.output.nn_modules[node.target]
 
         if is_lazy_module(nnmodule) and hasattr(nnmodule, "_initialize_hook"):
@@ -1327,6 +1327,8 @@ def run_node(tracer, node, args, kwargs, nnmodule):
         elif op == "placeholder":
             assert "example_value" in node.meta
             return node.meta["example_value"]
+        elif op == "call_graph":
+            return nnmodule(*args, **kwargs)
     except Exception as e:
         fn_str = f"Failed running {op} {node.target}(*{args}, **{kwargs}):\n"
         raise RuntimeError(fn_str + str(e)).with_traceback(e.__traceback__) from e
@@ -1351,7 +1353,7 @@ def get_real_value(node, tracer):
         lambda n: get_real_value(n, tracer),
     )
 
-    if op == "call_module":
+    if op == "call_module" or op == "call_graph":
         nn_module = tracer.output_graph.nn_modules[node.target]
         if not is_lazy_module(nn_module):
             nn_module = copy.deepcopy(nn_module)

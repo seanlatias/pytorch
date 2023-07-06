@@ -545,6 +545,13 @@ class CodeGen:
                 body.append(f'{repr(node)}{maybe_type_annotation} = '
                             f'{_format_target(root_module, node.target)}({_format_args(node.args, node.kwargs)})')
                 return
+            elif node.op == 'call_graph':
+                assert isinstance(node.target, str)
+                body.append(f'{repr(node)}{maybe_type_annotation} = '
+                            f'{_format_target(root_module, node.target)}()({_format_args(node.args, node.kwargs)})[0]')
+                return
+            elif node.op == 'subgraph':
+                return
             elif node.op == 'get_attr':
                 assert isinstance(node.target, str)
                 body.append(f'{repr(node)}{maybe_type_annotation} = {_format_target(root_module, node.target)}')
@@ -555,6 +562,17 @@ class CodeGen:
                 body.append(self.generate_output(node.args[0]))
                 return
             raise NotImplementedError(f'node: {node.op} {node.target}')
+
+        # Do a pass first to emit subgraphs
+        submodules = []
+        for node in nodes:
+            if node.op == 'subgraph':
+                submodules.append(f"class {node.target.__name__}(torch.nn.Module):")
+                from torch.nn.modules.module import _addindent
+                py_code = node.target._graph.python_code(root_module='self', verbose=verbose)
+                py_code = _addindent(py_code.src, 4)
+                submodules.append(py_code)
+        submodules = ''.join(submodules).lstrip('\n')
 
         for node in nodes:
             # NOTE: emit_node does not emit a string with newline. It depends
@@ -591,6 +609,7 @@ class CodeGen:
         fn_code = f"""
 {wrap_stmts}
 
+{submodules}
 {prologue}
 {code}"""
         return PythonCode(fn_code, globals_)
@@ -830,7 +849,7 @@ class Graph:
 
             The newly-created and inserted node.
         """
-        assert op in ('call_function', 'call_method', 'get_attr', 'call_module', 'placeholder', 'output')
+        assert op in ('call_function', 'call_method', 'get_attr', 'call_module', 'call_graph', 'subgraph', 'placeholder', 'output')
         args = () if args is None else args
         kwargs = {} if kwargs is None else kwargs
         assert isinstance(args, tuple), "args must be a tuple"
@@ -1138,6 +1157,14 @@ class Graph:
             as :meth:`Graph.create_node`.
         """
         return self.create_node('call_function', the_function, args, kwargs, type_expr=type_expr)
+
+    @compatibility(is_backward_compatible=True)
+    def call_graph(self,
+                   graph,
+                   args = None,
+                   kwargs = None,
+                   type_expr = None) -> Node:
+        return self.create_node('call_graph', graph, args, kwargs, type_expr=type_expr)
 
     @compatibility(is_backward_compatible=True)
     def node_copy(self, node: Node, arg_transform: Callable[[Node], 'Argument'] = lambda x: x) -> Node:

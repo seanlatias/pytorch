@@ -173,13 +173,13 @@ class Node:
         """
         self.graph = graph
         self.name = name  # unique name of value being created
-        assert op in ['placeholder', 'call_method', 'call_module', 'call_function', 'get_attr', 'output', 'root']
+        assert op in ['placeholder', 'call_method', 'call_module', 'call_function', 'call_graph', 'subgraph', 'get_attr', 'output', 'root']
         self.op = op  # the kind of operation = placeholder|call_method|call_module|call_function|get_attr
         if op == 'call_function':
             if not callable(target):
                 raise ValueError(f'Node [graph = {graph}, name = \'{name}\'] target {target} has type {torch.typename(target)} '
                                  'but a Callable is expected')
-        else:
+        elif op != "subgraph":
             if not isinstance(target, str):
                 raise ValueError(f'Node [graph = {graph}, name = \'{name}\'] target {target} has type {torch.typename(target)} '
                                  'but a str is expected')

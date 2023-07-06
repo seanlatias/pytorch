@@ -74,6 +74,18 @@ def _exec_with_source(src: str, globals: Dict[str, Any]):
     key = _loader.cache(src, globals)
     exec(compile(src, key, 'exec'), globals)
 
+def _forward_and_submodules_from_src(src: str, globals: Dict[str, Any]):
+    # avoid mutating the passed in dict
+    globals_copy = globals.copy()
+    _exec_with_source(src, globals_copy)
+    forward_fn = globals_copy['forward']
+    del globals_copy['forward']
+    # add info for submodules
+    submodules = {}
+    for k, v in globals_copy.items():
+        if k.startswith('L__self'):
+            submodules[k] = v
+    return forward_fn, submodules
 
 def _forward_from_src(src: str, globals: Dict[str, Any]):
     # avoid mutating the passed in dict
@@ -645,7 +657,10 @@ class {module_name}(torch.nn.Module):
         self._code = python_code.src
 
         cls = type(self)
-        cls.forward = _forward_from_src(self._code, python_code.globals)
+        forward, submodules = _forward_and_submodules_from_src(self._code, python_code.globals)
+        cls.forward = forward
+        for k, v in submodules.items():
+            setattr(cls, k, v)
 
         # Determine whether this class explicitly defines a __call__ implementation
         # to wrap. If it does, save it in order to have wrapped_call invoke it.

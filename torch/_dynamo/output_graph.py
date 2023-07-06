@@ -294,6 +294,9 @@ class OutputGraph(Checkpointable[OutputGraphState]):
         # presence of torch.no_grad) and there is a graph break.
         self.save_global_state()
 
+        # The compiled graph module
+        self.gm = None
+
     @property
     def root_tracer(self):
         return self.tracers[0]
@@ -837,7 +840,7 @@ class OutputGraph(Checkpointable[OutputGraphState]):
             (self.current_tracer.create_arg(tuple(x.as_proxy() for x in rv)),),
             {},
         )
-        self.remove_unused_graphargs()
+        #self.remove_unused_graphargs()
         ncalls = count_calls(self.graph)
         counters["stats"]["calls_captured"] += ncalls
 
@@ -847,6 +850,7 @@ class OutputGraph(Checkpointable[OutputGraphState]):
         gm = fx.GraphModule(root, self.graph)
         gm.compile_subgraph_reason = self.compile_subgraph_reason
         name = unique_id("__compiled_fn")
+        self.gm = gm
 
         graph_code_log.debug("%s", lazy_format_graph_code(name, gm))
         graph_tabular_log.debug("%s", lazy_format_graph_tabular(name, gm))
@@ -876,7 +880,7 @@ class OutputGraph(Checkpointable[OutputGraphState]):
     def graphargs(self) -> List[GraphArg]:
         return [node.meta["grapharg"] for node in self.placeholders]
 
-    @dynamo_timed(phase_name="backend_compile")
+    #@dynamo_timed(phase_name="backend_compile")
     def call_user_compiler(self, gm: fx.GraphModule) -> CompiledFn:
         tot = 0
         placeholders = []
@@ -1044,6 +1048,7 @@ class SubgraphTracer(fx.Tracer):
         type_expr=None,
         proxy_factory_fn=None,
     ):
+        print("ZZ", kind, name)
         # NOTE: [Nested SubgraphTracer and free_variable handling]
         # --------------------------------------------------------
         # Read NOTE [HigherOrderOperator tracing design] first.

@@ -287,6 +287,7 @@ class NNModuleVariable(VariableTracker):
                 # is_allowed or other variations.
                 initialize_lazy_module(tx, mod, args, kwargs)
 
+
             # If we are tracing the higher order op, we want Dynamo to step
             # inside the module call so that Dynamo can see the underlying
             # parameters and buffers and raise them as inputs to the graph.
@@ -326,15 +327,73 @@ class NNModuleVariable(VariableTracker):
                 if istype(fn, types.MethodType):
                     fn = fn.__func__
                     fn_source = AttrSource(fn_source, "__func__")
+                    new_args = args
                     args = [self] + args
                 else:
                     assert istype(fn, types.FunctionType)
                 options["source"] = fn_source
+                """
                 return tx.inline_user_function_return(
                     variables.UserFunctionVariable(fn, **options),
                     args,
                     kwargs,
                 )
+                print(tx.output.output_instructions)
+                """
+                from ..symbolic_convert import InstructionTranslator, InliningInstructionTranslator
+                print("XX, fake inling")
+                from ..output_graph import GraphCompileReason
+                import dis
+                from ..bytecode_transformation import convert_instruction, cleaned_instructions
+                func = variables.UserFunctionVariable(fn, **options)
+                code = func.get_code()
+                code_options = {k: getattr(code, k) for k in dir(code)}
+                code_options["co_varnames"] += tx.code_options["co_varnames"]
+                f_globals = func.get_globals()
+                f_builtins = f_globals["__builtins__"]
+                tx2 = InstructionTranslator(cleaned_instructions(code),
+                                            code,
+                                            tx.f_locals,
+                                            f_globals,
+                                            f_builtins,
+                                            code_options,
+                                            tx.compiler_fn,
+                                            tx.one_graph,
+                                            tx.export,
+                                            tx.export_constraints,
+                                            tx.mutated_closure_cell_contents,
+                                            tx.frame_state)
+                sub_locals, closure_cells = func.bind_args(tx2, args, kwargs)
+                tx2._fake_mode = tx._fake_mode
+                print(sub_locals)
+                #tx2.symbolic_locals = dict(sub_locals, **tx2.symbolic_locals)
+                tx2.symbolic_locals = sub_locals
+                tx2.symbolic_locals['x'] = tx.symbolic_locals['x']
+
+                print(tx2.symbolic_locals)
+                tx2.symbolic_globals = tx.symbolic_globals
+                for k, v in tx.output.nn_modules.items():
+                    tx2.output.nn_modules[k] = v
+                tx2.run()
+                print("XX", tx2.output.gm)
+                gm = tx2.output.gm
+                gm.__name__ = self.module_key
+                tx.output.create_proxy(
+                        "subgraph",
+                        gm,
+                        *proxy_args_kwargs([], {}),
+                )
+                from .builder import wrap_fx_proxy
+                return wrap_fx_proxy(
+                    tx=tx,
+                    proxy=tx.output.create_proxy(
+                        "call_graph",
+                        self.module_key,
+                        *proxy_args_kwargs(new_args, kwargs),
+                    ),
+                    **options,
+                )
+                #"""
 
     def call_method(
         self,
